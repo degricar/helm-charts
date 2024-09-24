@@ -9,6 +9,16 @@ domain_number: 1
 domain_config: everything nested under .Values.service_1.domain_1
 */}}
 
+{{- define "bird.afis" -}}
+{{ $afis := list }}
+{{- range $k, $v := .domain_config }}
+  {{ if and (hasPrefix "network_v" $k) $v }}
+    {{- $afis = append $afis (trimPrefix "network_" $k) }}
+  {{- end }}
+{{- end }}
+{{ $afis | toJson }}
+{{- end }}
+
 {{- define "bird.domain.config_name" -}}
 {{- printf "%s-pxrs-%d-s%d" .top.Values.global.region .domain_number .service_number }}
 {{- end }}
@@ -17,16 +27,33 @@ domain_config: everything nested under .Values.service_1.domain_1
 {{- printf "%s%s.conf" .top.Values.bird_config_path  (include "bird.domain.config_name" .) -}}
 {{- end }}
 
-{{- define "bird.domain.deployment_name" }}
-{{- printf "routeserver-v4-service-%d-domain-%d" .service_number .domain_number }}
+{{- define "bird.statefulset.name" }}
+{{- printf "routeserver-%s-service-%d-domain-%d" .afi .service_number .domain_number }}
 {{- end }}
 
 {{- define "bird.domain.labels" }}
-app: {{ include "bird.domain.deployment_name" . | quote }}
 pxservice: '{{ .service_number }}'
+px.cloud.sap/service: {{ .service_number | quote }}
 pxdomain: '{{ .domain_number }}'
+px.cloud.sap/domain: {{ .domain_number | quote }}
 service: {{ .top.Release.Name | quote }}
 {{- end }}
+
+{{- define "bird.afi.labels" }}
+px.cloud.sap/afi: {{ .afi | quote }}
+{{- end }}
+
+{{- define "bird.statefulset.labels" }}
+app: {{ include "bird.statefulset.name" . | quote }}
+{{- include "bird.domain.labels" . }}
+{{- include "bird.afi.labels" . }}
+{{- end }}
+
+
+{{- define "bird.afi.network "}}
+
+{{- end }}
+
 
 {{- define "bird.alert.labels" }}
 alert-tier: px
@@ -60,6 +87,10 @@ podAntiAffinity:
     - topologyKey: "kubernetes.cloud.sap/host"
       labelSelector:
         matchExpressions:
+        - key: px.cloud.sap/afi
+          operator: In
+          values:
+          - {{ .afi | quote }}
         - key: pxservice
           operator: In
           values:
@@ -79,6 +110,10 @@ podAntiAffinity:
           operator: In
           values:
           - {{ .domain_number | quote }}
+        - key: px.cloud.sap/afi
+          operator: In
+          values:
+          - {{ .afi | quote }}
 {{- end }}
 {{- end }}
 
